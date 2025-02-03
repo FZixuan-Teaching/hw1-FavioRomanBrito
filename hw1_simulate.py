@@ -140,11 +140,10 @@ def mip(P: dict, D: dict, patient_status: dict, donor_status: dict, compatible_b
     matches = [(i, j) for (i, j) in x if x[i, j].X > 0.5]  # Only include selected pairs
 
     # Update patient and donor status
-    for (i, j) in matches:
-        patient_status[i] = True
-        donor_status[j] = True
-
-    return matches
+matches = []
+for v in model.getVars():
+      matches.append(v.varName, v.X)
+return matches
 
 # %%
 ## Second integer linear programming approach for transplants
