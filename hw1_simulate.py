@@ -117,29 +117,33 @@ def mip(P: dict, D: dict, patient_status: dict, donor_status: dict, compatible_b
   model = Model('kidney-matching')
   sys.stdout.flush()
 
-# Variables: x_{i,j} binary representing whether patient i to donor j
+    # Decision Variables
     x = {}
     for i in patients:
         for j in donors:
             if can_receive(P[i], D[j], compatible_blood_type):
-                x[i, j] = model.addVar(vtype=GRB.BINARY, name='x_{0}_{1}'.format(i, j))
+                x[i, j] = model.addVar(vtype=GRB.BINARY, name=f'x_{i}_{j}')
 
-    # Constraints: Each patient can be matched to at most one donor
-    model.addConstrs((quicksum(x[i, j] for j in donors) <= 1 for i in patients), name='patient')
+    # Constraints: Each patient can receive at most one kidney
+    model.addConstrs((quicksum(x[i, j] for j in donors if (i, j) in x) <= 1 for i in patients), name='patient')
 
-    # Each donor can be matched to at most one patient
-    model.addConstrs((quicksum(x[i, j] for i in patients) <= 1 for j in donors), name='donor')
+    # Each donor can donate at most one kidney
+    model.addConstrs((quicksum(x[i, j] for i in patients if (i, j) in x) <= 1 for j in donors), name='donor')
 
     # Objective: Maximize the number of transplants
-    model.setObjective(quicksum(x[i, j] for i in patients for j in donors), GRB.MAXIMIZE)
+    model.setObjective(quicksum(x[i, j] for (i, j) in x), GRB.MAXIMIZE)
 
-  model.params.outputflag = 0
-  model.optimize()
-  model.params.LogToConsole = 0
+    # Solve the optimization model
+    model.optimize()
 
-    matches = []
-    for v in model.getVars():
-      matches.append(v.varName, v.X)
+    # Extract matches from the model solution
+    matches = [(i, j) for (i, j) in x if x[i, j].X > 0.5]  # Only include selected pairs
+
+    # Update patient and donor status
+    for (i, j) in matches:
+        patient_status[i] = True
+        donor_status[j] = True
+
     return matches
 
 # %%
