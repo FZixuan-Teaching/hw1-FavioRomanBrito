@@ -82,8 +82,15 @@ def greedy_algorithm(P: dict, D: dict, patient_status: dict, donor_status: dict,
   ### Question 1.1(b).i: Code the greedy algorithm and append matches to the list 'matches'
   matches = []
 
+  for p in patients:
+        for d in donors:
+            if patient_status[p] == False and donor_status[d] == False:
+                if can_receive(P[p], D[d], compatible_blood_type):
+                    matches.append((p, d))
+                    patient_status[p] = True
+                    donor_status[d] = True
+                    break
   return matches
-
 
 # %%
 ## Integer linear programming approach for transplants
@@ -110,24 +117,30 @@ def mip(P: dict, D: dict, patient_status: dict, donor_status: dict, compatible_b
   model = Model('kidney-matching')
   sys.stdout.flush()
 
-  # Variables: x_{i,j} binary representing whether patient i to donor j
+# Variables: x_{i,j} binary representing whether patient i to donor j
+    x = {}
+    for i in patients:
+        for j in donors:
+            if can_receive(P[i], D[j], compatible_blood_type):
+                x[i, j] = model.addVar(vtype=GRB.BINARY, name='x_{0}_{1}'.format(i, j))
 
-  # Constraint: Each patient can be matched to at most one (compatible) donor
+    # Constraints: Each patient can be matched to at most one donor
+    model.addConstrs((quicksum(x[i, j] for j in donors) <= 1 for i in patients), name='patient')
 
-  # Constraint: Each donor can be matched to at most one (compatible) patient
+    # Each donor can be matched to at most one patient
+    model.addConstrs((quicksum(x[i, j] for i in patients) <= 1 for j in donors), name='donor')
 
-  # Objective: Maximize number of transplants
+    # Objective: Maximize the number of transplants
+    model.setObjective(quicksum(x[i, j] for i in patients for j in donors), GRB.MAXIMIZE)
 
-  # Optimize
   model.params.outputflag = 0
   model.optimize()
   model.params.LogToConsole = 0
 
-  # Set matches based on solution to model
-  matches = []
-
-  return matches
-
+    matches = []
+    for v in model.getVars():
+      matches.append(v.varName, v.X)
+    return matches
 
 # %%
 ## Second integer linear programming approach for transplants
@@ -324,13 +337,18 @@ def simulate(
   print('Total # patients matched: {:d}/{:d}'.format(sum(num_matched_by_type.values()), num_patients))
   print('Number of patients by type:', num_patients_by_type)
   print('Number of patients matched:', num_matched_by_type)
-  print('1.1(b)iii: Average number of patients (per blood type) matched per period:', "TODO for homework")
-  print('1.1(b)iv: Average time in system:', "TODO for homework")
+  print('1.1(b)iii: Average number of patients (per blood type) matched per period:', {key: num_matched_by_type[key] / num_periods for key in compatible_blood_type.keys()})
+  print('1.1(b)iv: Average time in system:', sum(TIS.values()) / num_patients)
   print('Average time in system (by type, weighed by num_patients):', {key : sum(TIS[i] for i in patients if patients[i] == key) / num_patients for key in compatible_blood_type.keys()})
   print('1.1(b)iv: Average time in system (by type, weighed by num_patients_by_type):', TIS_BT)
-  print('1.1(b)v: Average proportion of patients matched per period by type:', "TODO for extra credit")
+  print('1.1(b)v: Average proportion of patients matched per period by type:', (matching_rates * total_counts).sum())
 
-  return num_matched_by_type, num_patients
+total_counts = df['blood_type'].value_counts(normalize=True)  # Get proportions P_b
+match_counts = df[df['matched'] == 1]['blood_type'].value_counts()
+total_patients_per_type = df['blood_type'].value_counts()
+matching_rates = match_counts / total_patients_per_type
+
+return num_matched_by_type, num_patients
 
 def main(rs_seed:int = 628):
   if (type(rs_seed) != int):
